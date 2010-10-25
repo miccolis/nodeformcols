@@ -1,0 +1,7 @@
+; $Id: nfccaptcha.info,v 1.1.2.1 2010/09/25 19:27:57 voxpelli Exp $
+name = CAPTCHA compatability
+description = Adds support for CAPTCHA in node forms
+dependencies[] = nodeformcols
+dependencies[] = captcha
+core = 7.x
+package = Node form columns
