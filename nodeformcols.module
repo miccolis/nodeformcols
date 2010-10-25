@@ -25,19 +25,15 @@ function nodeformcols_theme($aExisting) {
  */
 function nodeformcols_menu() {
   $items = array();
-
-  if (!defined('MAINTENANCE_MODE')) {
-    $items['admin/structure/types/manage/%node_type/form'] = array(
-      'title' => 'Manage form',
-      'page callback' => 'drupal_get_form',
-      'page arguments' => array('nodeformcols_configuration_form', 4, 6),
-      'access arguments' => array('administer content types'),
-      'file' => 'nodeformcols.admin.inc',
-      'type' => MENU_LOCAL_TASK,
-      'weight' => 3,
-    );
-  }
-
+  $items['admin/structure/types/manage/%node_type/form'] = array(
+    'title' => 'Manage form',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nodeformcols_configuration_form', 4, 6),
+    'access arguments' => array('administer content types'),
+    'file' => 'nodeformcols.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 3,
+  );
   return $items;
 }
 
