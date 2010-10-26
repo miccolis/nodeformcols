@@ -178,7 +178,6 @@ function _nodeformcols_get_user_form($type) {
  * Implementation of hook_form_alter().
  */
 function nodeformcols_form_alter(&$form, $form_state, $form_id) {
-  //krumo($form);
   // When does this get called?
   /*
   if (isset($form['#id']) && $form['#id']=='node-form') {
