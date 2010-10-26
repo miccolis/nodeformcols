@@ -21,6 +21,9 @@ function nodeformcols_theme() {
   );
 }
 
+/**
+ * Implementation of hook_registry_alter.
+ */
 function nodeformcols_theme_registry_alter(&$items) {
   if (!isset($items['taxonomy_form_term'])) {
     $items['taxonomy_form_term'] = array('preprocess functions' => array());
@@ -51,6 +54,7 @@ function nodeformcols_menu() {
     'type_callback' => 'nodeformcols_detect_taxonomy_type',
     'default_form_callback' => '_nodeformcols_get_vocabulary_form',
   );
+  /*
   $types['user'] = array(
     'entity' => 'user',
     'path' => 'admin/config/people/accounts/form',
@@ -58,6 +62,7 @@ function nodeformcols_menu() {
     'type_callback' => 'nodeformcols_detect_user_type',
     'default_form_callback' => '_nodeformcols_get_user_form',
   );
+  */
   // drupal_alter()...
 
   $items = array();
@@ -204,6 +209,9 @@ function template_preprocess_node_form(&$vars) {
   _nodeformcols_apply_placements($vars, $placements);
 }
 
+/**
+ * Preprocess function for taxonomy.
+ */
 function nodeformcols_preprocess_taxonomy_term_form(&$vars) {
   // TODO detect and pass variant.
   $placements = nodeformscols_field_placements('taxonomy_term', $vars['form']['#vocabulary']->machine_name, 'default');
