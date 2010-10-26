@@ -13,15 +13,22 @@ function nodeformcols_theme() {
       'render element' => 'form',
       'template' => 'node-form',
     ),
-    'taxonomy_form_term' => array(
-      'render element' => 'form',
-      'template' => 'taxonomy-form-term',
-    ),
     'nodeformcols_configuration' => array(
       'render element' => 'element',
       'template' => 'nodeformcols-configuration',
     ),
+    // TODO user edit page.
   );
+}
+
+function nodeformcols_theme_registry_alter(&$items) {
+  if (!isset($items['taxonomy_form_term'])) {
+    $items['taxonomy_form_term'] = array('preprocess functions' => array());
+  }
+  elseif (!isset($items['taxonomy_form_term']['preprocess functions'])) {
+    $items['taxonomy_form_term']['preprocess functions'] = array();
+  }
+  $items['taxonomy_form_term']['preprocess functions'][] = 'nodeformcols_preprocess_taxonomy_term_form';
 }
 
 /**
@@ -198,20 +205,21 @@ function template_preprocess_node_form(&$vars) {
   _nodeformcols_apply_placements($vars, $placements);
 }
 
-// theme for vocab form.
-function template_preprocess_taxonomy_form_term(&$vars) {
-  $form = &$vars['form'];
+function nodeformcols_preprocess_taxonomy_term_form(&$vars) {
   // TODO detect and pass variant.
-  $placements = nodeformscols_field_placements('node', $form['#vocabulary']->machine_name, 'default');
+  $placements = nodeformscols_field_placements('taxonomy_term', $vars['form']['#vocabulary']->machine_name, 'default');
   _nodeformcols_apply_placements($vars, $placements);
 }
 
-function _nodeformcols_apply_placements(&$aVars, $placements){
+/**
+ * Private function which actually manipulates the form.
+ */
+function _nodeformcols_apply_placements(&$vars, $placements){
   drupal_add_css(drupal_get_path('module', 'nodeformcols') . '/css/nodeformcols.css');
 
   $default_region = variable_get('nodeformcols_default_region', NODEFORMCOLS_DEFAULT_REGION);
-  $form = &$aVars['form'];
-  $class = array('node-form', 'clearfix'); // todo remove node class
+  $form = &$vars['form'];
+  $class = array('nodeformcols', 'clearfix'); // todo remove node class
 
   $regions = array();
   $has_elements = array();
@@ -263,12 +271,12 @@ function _nodeformcols_apply_placements(&$aVars, $placements){
 
   foreach ($has_elements as $name => $has) {
     if ($has) {
-      $class[] = 'node-form-has-region-' . $name; // more node classing to remove.
+      $class[] = 'nodeformcols-has-region-' . $name;
       $form['nodeformcols_region_' . $name] = $regions[$name];
     }
   }
 
-  $aVars['class'] = join($class, ' ');
+  $vars['class'] = join($class, ' ');
 }
 
 /**
