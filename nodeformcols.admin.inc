@@ -6,28 +6,14 @@
  * Contains the admin functions for Node form columns
  */
 
-function _nodeformcols_get_node_type_form($type) {
-  module_load_include('inc', 'node', 'node.pages');
-
-  global $user;
-  $node = new stdClass();
-  $node->uid = $user->uid;
-  $node->name = isset($user->name) ? $user->name : '';
-  $node->type = $type;
-  $node->language = '';
-  $nfid = $type . '_node_form';
-  $fs = array(
-    'build_info' => array('args' => array($node)),
-  );
-  $fs += form_state_defaults();
-  $nf = drupal_retrieve_form($nfid, $fs);
-  drupal_prepare_form($nfid, $nf, $fs);
-  drupal_process_form($nfid, $nf, $fs);
-  return $nf;
-}
-
-function nodeformcols_update_placements($type, $variant, &$placements) {
-  $form = _nodeformcols_get_node_type_form($type);
+/**
+ * @param $form
+ * @param $variant
+ * @param $placements
+ *
+ * @return null
+ */
+function nodeformcols_update_placements($form, $variant, &$placements) {
   drupal_alter('nodeformcols_base_form', $form, $variant);
   $default_region = variable_get('nodeformcols_default_region', NODEFORMCOLS_DEFAULT_REGION);
 
@@ -55,10 +41,15 @@ function nodeformcols_update_placements($type, $variant, &$placements) {
         'region' => $default_region,
         'weight' => $field['#weight'],
       );
+
+      /*
       // Make sure that we don't auto-place the field below the buttons.
-      if ($placements['actions']['region'] == $default_region && $placements[$key]['weight'] >= $placements['actions']['weight']) {
+      if ($placements['actions']['region'] == $default_region
+        && $placements[$key]['weight'] >= $placements['actions']['weight'])
+      {
         $placements[$key]['weight'] = $placements['actions']['weight'] - .1;
       }
+      */
     }
     elseif (!isset($placements[$key]['weight'])) {
       $placements[$key]['weight'] = $field['#weight'];
@@ -105,12 +96,21 @@ function _nodeformcols_get_element_title($element) {
   }
 }
 
-function nodeformcols_configuration_form($form, $form_state, $node_type, $variant = 'default') {
-  $type = $node_type->type;
+function nodeformcols_configuration_form($form, $form_state, $form_info) {
+  // Call the "type_callback" for this type of form with the arguments that are
+  // parsed from the url. The "type_callback" will return type name and variant
+  // info.
+  $args = array_slice(func_get_args(), 3);
+  list($type, $variant) = call_user_func_array($form_info['type_callback'], $args);
+  $variant = $variant ? $variant : 'default';
+
+  $form = array();
+
+  // TODO we need a way to generate these based on the urls declared by the form type.
+  /*
   $variants = array();
   drupal_alter('nodeformcols_variants', $variants, $type);
 
-  $form = array();
   if (!empty($variants)) {
     $variant_links = array(
       'default' => array(
@@ -131,21 +131,27 @@ function nodeformcols_configuration_form($form, $form_state, $node_type, $varian
       '#value' => theme('links', array('links' => $variant_links)),
     );
   }
+  */
 
-  if (empty($variant)) {
-    $variant = 'default';
-  }
-  $form['#variant'] = $variant;
-
-  $placements = nodeformscols_field_placements($type, $variant);
-  nodeformcols_update_placements($type, $variant, $placements);
+  $default_form = call_user_func($form_info['default_form_callback'], $type);
+  $placements = nodeformscols_field_placements($form_info['entity'], $type, $variant);
+  nodeformcols_update_placements($default_form, $variant, $placements);
 
   $regions = nodeformcols_form_regions();
 
+  $form['info'] = array(
+    '#type' => 'value',
+    '#value' => $form_info,
+  );
   $form['type'] = array(
     '#type' => 'value',
     '#value' => $type,
   );
+  $form['variant'] = array(
+    '#type' => 'value',
+    '#value' => $variant,
+  );
+
   $form['#after_build'][] = '_nodeformcols_configuration_form_after_build';
   $form['conf'] = array(
     '#theme' => array('nodeformcols_configuration'),
@@ -239,9 +245,14 @@ function _nodeformcols_configuration_form_after_build($form) {
 
 function nodeformcols_configuration_form_submit($form, $form_state) {
   $values = $form_state['values'];
+
+  $entity = $values['info']['entity'];
   $type = $values['type'];
-  $placements = nodeformscols_field_placements($type, $form['#variant']);
-  nodeformcols_update_placements($type, $form['#variant'], $placements);
+  $variant= $values['variant'];
+
+  $placements = nodeformscols_field_placements($entity, $type, $variant);
+  $default_form = call_user_func($values['info']['default_form_callback'], $type);
+  nodeformcols_update_placements($default_form, $variant, $placements);
 
   foreach ($placements as $name => &$opt) {
     $field = 'field_' . $name;
@@ -255,6 +266,5 @@ function nodeformcols_configuration_form_submit($form, $form_state) {
     }
   }
 
-  variable_set('nodeformscols_field_placements_' . $type .
-    '_' . $form['#variant'], $placements);
+  variable_set("nodeformscols_field_placements_{$entity}_{$type}_{$variant}", $placements);
 }

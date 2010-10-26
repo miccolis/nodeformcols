@@ -5,13 +5,17 @@ define('NODEFORMCOLS_DEFAULT_REGION', 'main');
 /**
  * Implementation of hook_theme().
  */
-function nodeformcols_theme($aExisting) {
+function nodeformcols_theme() {
   return array(
     // This needs to run after node.module's hook_theme(), which we ensure
     // by setting this module's weight to 1 during install.
     'node_form' => array(
       'render element' => 'form',
       'template' => 'node-form',
+    ),
+    'taxonomy_form_term' => array(
+      'render element' => 'form',
+      'template' => 'taxonomy-form-term',
     ),
     'nodeformcols_configuration' => array(
       'render element' => 'element',
@@ -24,16 +28,52 @@ function nodeformcols_theme($aExisting) {
  * Implementation of hook_menu().
  */
 function nodeformcols_menu() {
-  $items = array();
-  $items['admin/structure/types/manage/%node_type/form'] = array(
-    'title' => 'Manage form',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('nodeformcols_configuration_form', 4, 6),
-    'access arguments' => array('administer content types'),
-    'file' => 'nodeformcols.admin.inc',
-    'type' => MENU_LOCAL_TASK,
-    'weight' => 3,
+  // TODO move to a hook.
+  $types = array();
+  $types['node'] = array(
+    'entity' => 'node',
+    'path' => 'admin/structure/types/manage/%node_type/form',
+    'permission' => 'administer content types',
+    'type_callback' => 'nodeformcols_detect_node_type',
+    'default_form_callback' => '_nodeformcols_get_node_type_form',
   );
+  $types['taxonomy_term'] = array(
+    'entity' => 'taxonomy_term',
+    'path' => 'admin/structure/taxonomy/%taxonomy_vocabulary_machine_name/form',
+    'permission' => 'administer taxonomy',
+    'type_callback' => 'nodeformcols_detect_taxonomy_type',
+    'default_form_callback' => '_nodeformcols_get_vocabulary_form',
+  );
+  $types['user'] = array(
+    'entity' => 'user',
+    'path' => 'admin/config/people/accounts/form',
+    'permission' => 'administer users',
+    'type_callback' => 'nodeformcols_detect_user_type',
+    'default_form_callback' => '_nodeformcols_get_user_form',
+  );
+  // drupal_alter()...
+
+  $items = array();
+  foreach ($types as  $type) {
+    $args = array('nodeformcols_configuration_form', $type);
+    foreach (explode('/', $type['path']) as $k => $i) {
+      if (strpos($i, '%') === 0) {
+        $args[] = $k;
+      }
+    }
+    $args[] = $k+1; // for variants.
+
+    $items[$type['path']] = array(
+      'title' => 'Manage form',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => $args,
+      'access callback' => 'user_access',
+      'access arguments' => array($type['permission']),
+      'file' => 'nodeformcols.admin.inc',
+      'type' => MENU_LOCAL_TASK,
+      'weight' => 3,
+    );
+  }
   return $items;
 }
 
@@ -46,6 +86,9 @@ function nodeformcols_ctools_plugin_directory($module, $plugin) {
   }
 }
 
+/**
+ * Retrieve the supported regions.
+ */
 function nodeformcols_form_regions() {
   return array(
     'main' => t('Main column'),
@@ -55,39 +98,86 @@ function nodeformcols_form_regions() {
 }
 
 /**
- * Gets default placements for standard fields
- *
- * @return array
+ * Load the placements for the requested entiry/bundle/variant combination.
+ * While we're not using the entity or field APIs it's we use the same lingo
+ * to refer to the same constructs.
  */
-function _nodeformscols_default_field_placements() {
-  return array(
-    'title' => array('region' => 'main'),
-    'additional_settings' => array('region' => 'main'),
-    'actions' => array('region' => NODEFORMCOLS_DEFAULT_REGION, 'weight' => 100),
-  );
+function nodeformscols_field_placements($entity_type, $bundle, $variant = 'default') {
+  $default = array();
+  if ($variant != 'default') {
+    $default = variable_get("nodeformscols_field_placements_{$entity_type}_{$bundle}_default", $default);
+  }
+  return variable_get("nodeformscols_field_placements_{$entity_type}_{$bundle}_{$variant}", $default);
 }
 
-function nodeformscols_field_placements($content_type, $variant) {
-  $default = _nodeformscols_default_field_placements();
-  if ($variant != 'default') {
-    $default = variable_get('nodeformscols_field_placements_' .
-      $content_type . '_default', $default);
-  }
 
-  $placements = variable_get('nodeformscols_field_placements_' . $content_type .
-    '_' . $variant, $default);
+/**
+ * Integration with Node, Taxonomy and User follows.
+ */
 
-  return $placements;
+function nodeformcols_detect_node_type($node, $variant = 'default') {
+  return array($node->type, $variant);
+}
+
+function nodeformcols_detect_taxonomy_type($vocab, $variant = 'default') {
+  return array($vocab->machine_name, $variant);
+}
+
+function nodeformcols_detect_user_type($variant) {
+  return array('user', $variant);
+} 
+
+function _nodeformcols_get_node_type_form($type) {
+  module_load_include('inc', 'node', 'node.pages');
+
+  global $user;
+  $node = new stdClass();
+  $node->uid = $user->uid;
+  $node->name = isset($user->name) ? $user->name : '';
+  $node->type = $type;
+  $node->language = '';
+
+  $form_id = $type . '_node_form';
+  $form_state= array(
+    'build_info' => array('args' => array($node)),
+  );
+  $form_state += form_state_defaults();
+  $form = drupal_retrieve_form($form_id, $form_state);
+  drupal_prepare_form($form_id, $form, $form_state);
+  drupal_process_form($form_id, $form, $form_state);
+  return $form;
+}
+
+function _nodeformcols_get_vocabulary_form($type) {
+  module_load_include('inc', 'taxonomy', 'taxonomy.admin');
+  $vocabulary = taxonomy_vocabulary_machine_name_load($type);
+
+  $form_id = 'taxonomy_form_term';
+  $form_state = array(
+    'build_info' => array('args' => array(array(), $vocabulary)),
+  );
+  $form_state += form_state_defaults();
+  $form = drupal_retrieve_form($form_id, $form_state, array(), $vocabulary);
+  drupal_prepare_form($form_id, $form, $form_state);
+  drupal_process_form($form_id, $form, $form_state);
+  return $form;
+}
+
+function _nodeformcols_get_user_form($type) {
+  // TODO
 }
 
 /**
  * Implementation of hook_form_alter().
  */
 function nodeformcols_form_alter(&$form, $form_state, $form_id) {
+  //krumo($form);
+  // When does this get called?
+  /*
   if (isset($form['#id']) && $form['#id']=='node-form') {
     drupal_alter('nodeformcols_pre_form', $form);
     $variant = isset($form['#nodeformcols_variant']) ? $form['#nodeformcols_variant'] : 'default';
-    $placements = nodeformscols_field_placements($form['#node']->type, $variant);
+    $placements = nodeformscols_field_placements('node', $form['#node']->type, $variant);
     foreach ($placements as $key => $p) {
       if (isset($p['hidden']) && $p['hidden']) {
         $form[$key]['#access'] = FALSE;
@@ -95,17 +185,33 @@ function nodeformcols_form_alter(&$form, $form_state, $form_id) {
     }
     drupal_alter('nodeformcols_post_form', $form);
   }
+  */
 }
 
 /**
  * Preprocess function to run ahead of other modules.
  */
-function template_preprocess_node_form(&$aVars) {
+function template_preprocess_node_form(&$vars) {
+  $form = &$vars['form'];
+  $variant = isset($form['#nodeformcols_variant']) ? $form['#nodeformcols_variant'] : 'default';
+  $placements = nodeformscols_field_placements('node', $form['#node']->type, $variant);
+  _nodeformcols_apply_placements($vars, $placements);
+}
+
+// theme for vocab form.
+function template_preprocess_taxonomy_form_term(&$vars) {
+  $form = &$vars['form'];
+  // TODO detect and pass variant.
+  $placements = nodeformscols_field_placements('node', $form['#vocabulary']->machine_name, 'default');
+  _nodeformcols_apply_placements($vars, $placements);
+}
+
+function _nodeformcols_apply_placements(&$aVars, $placements){
   drupal_add_css(drupal_get_path('module', 'nodeformcols') . '/css/nodeformcols.css');
 
   $default_region = variable_get('nodeformcols_default_region', NODEFORMCOLS_DEFAULT_REGION);
   $form = &$aVars['form'];
-  $class = array('node-form', 'clearfix');
+  $class = array('node-form', 'clearfix'); // todo remove node class
 
   $regions = array();
   $has_elements = array();
@@ -120,8 +226,6 @@ function template_preprocess_node_form(&$aVars) {
   }
 
   drupal_alter('nodeformcols_pre_placement', $form);
-  $variant = isset($form['#nodeformcols_variant']) ? $form['#nodeformcols_variant'] : 'default';
-  $placements = nodeformscols_field_placements($form['#node']->type, $variant);
 
   // Track if new fields should be adjusted above the buttons.
   // TODO: This should be generalized to a way to tell nodeformcols where to place new fields (above below field X).
@@ -159,7 +263,7 @@ function template_preprocess_node_form(&$aVars) {
 
   foreach ($has_elements as $name => $has) {
     if ($has) {
-      $class[] = 'node-form-has-region-' . $name;
+      $class[] = 'node-form-has-region-' . $name; // more node classing to remove.
       $form['nodeformcols_region_' . $name] = $regions[$name];
     }
   }
